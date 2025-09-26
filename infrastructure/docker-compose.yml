@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  # PostgreSQL - Primary database for CQRS write side
+  postgres:
+    image: postgres:15-alpine
+    container_name: shrtnr-postgres
+    environment:
+      POSTGRES_DB: shrtnr
+      POSTGRES_USER: shrtnr_user
+      POSTGRES_PASSWORD: shrtnr_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - shrtnr-network
+    restart: unless-stopped
+
+  # Redis - Fast read cache for CQRS read side
+  redis:
+    image: redis:7-alpine
+    container_name: shrtnr-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - shrtnr-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # Kafka - Message broker for event streaming
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: shrtnr-kafka
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - shrtnr-network
+    depends_on:
+      - zookeeper
+    restart: unless-stopped
+
+  # Zookeeper - Required for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: shrtnr-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    networks:
+      - shrtnr-network
+    restart: unless-stopped
+
+  # Kafka UI - Web interface for Kafka management (optional)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: shrtnr-kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: shrtnr-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - shrtnr-network
+    depends_on:
+      - kafka
+    restart: unless-stopped
+
+  # Redis Insight - Redis management UI (optional)
+  redis-insight:
+    image: redislabs/redisinsight:latest
+    container_name: shrtnr-redis-insight
+    ports:
+      - "8081:8001"
+    networks:
+      - shrtnr-network
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  kafka_data:
+  zookeeper_data:
+  zookeeper_logs:
+
+networks:
+  shrtnr-network:
+    driver: bridge

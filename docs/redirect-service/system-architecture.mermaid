@@ -1,0 +1,18 @@
+graph TD
+    A[HTTP Request] --> B[io_uring Accept]
+    B --> C[HTTP Parser<br/>picohttpparser]
+    C --> D{Route?}
+    
+    D -->|/:code| E[Redirect Handler]
+    D -->|/health| F[Health Check]
+    D -->|/metrics| G[Metrics Endpoint]
+    
+    E --> H[L1 Cache<br/>Robin Hood Hash]
+    H -->|Hit| I[Return 301]
+    H -->|Miss| J[L2 Cache<br/>Valkey]
+    J -->|Hit| I
+    J -->|Miss| K[L3 Database<br/>PostgreSQL]
+    K --> I
+    
+    I --> L[Async Click Track]
+    L --> M[ClickHouse/ScyllaDB]
